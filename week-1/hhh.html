@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>JS 스코프 시각화</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, "Pretendard",
+          sans-serif;
+      }
+      body {
+        margin: 24px;
+      }
+      h1 {
+        margin: 0 0 8px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+      button {
+        padding: 8px 12px;
+        border-radius: 10px;
+        border: 1px solid #ddd;
+        cursor: pointer;
+      }
+      button.primary {
+        border-color: #444;
+      }
+      .stage {
+        margin: 12px 0 20px;
+        font-size: 14px;
+        color: #333;
+      }
+      .scopes {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 12px;
+      }
+      .scope {
+        border: 2px solid #222;
+        border-radius: 12px;
+        padding: 12px;
+        background: #fafafa;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
+      }
+      .scope h3 {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+      .kv {
+        display: grid;
+        grid-template-columns: 110px 1fr;
+        gap: 6px;
+        margin: 4px 0;
+      }
+      .k {
+        font-weight: 600;
+      }
+      .v {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        border: 1px solid #ddd;
+      }
+      .pill.var {
+        background: #fffbe6;
+      }
+      .pill.let {
+        background: #e8f7ff;
+      }
+      .pill.const {
+        background: #eaf7ea;
+      }
+      .pill.func {
+        background: #f3e8ff;
+      }
+      .note {
+        margin-top: 6px;
+        font-size: 12px;
+        color: #666;
+      }
+      .code {
+        white-space: pre-wrap;
+        background: #0b1022;
+        color: #e7f0ff;
+        padding: 12px;
+        border-radius: 10px;
+        font-size: 13px;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+      }
+      .footer {
+        margin-top: 16px;
+        font-size: 12px;
+        color: #555;
+      }
+      .tdz {
+        color: #c41;
+        font-weight: 700;
+      }
+      .hoisted {
+        color: #945;
+        font-weight: 700;
+      }
+      .muted {
+        color: #999;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>JS 스코프 시각화</h1>
+    <div class="toolbar">
+      <button class="primary" onclick="loadScenario('var-vs-let-tdz')">
+        시나리오 1: var vs let (TDZ/호이스팅)
+      </button>
+      <button onclick="loadScenario('function-vs-block')">
+        시나리오 2: 함수스코프 vs 블록스코프
+      </button>
+      <button onclick="loadScenario('closure-capture')">
+        시나리오 3: 클로저 캡처
+      </button>
+    </div>
+
+    <div class="code" id="code"></div>
+    <div class="stage" id="stage">시나리오를 선택하세요.</div>
+    <div class="scopes" id="scopes"></div>
+
+    <div class="toolbar">
+      <button onclick="prevStep()">◀ 이전</button>
+      <button class="primary" onclick="nextStep()">▶ 다음</button>
+      <span class="muted" id="progress"></span>
+    </div>
+
+    <div class="footer">
+      표기 규칙: <span class="pill var">var</span>
+      <span class="pill let">let</span> <span class="pill const">const</span>
+      <span class="pill func">function</span> / <span class="tdz">⛔ TDZ</span>
+      <span class="hoisted">↑ 호이스팅(초기화 전)</span>
+    </div>
+
+    <script>
+      /**
+       * 각 시나리오는 step 배열로 구성된다.
+       * step = {
+       *   label: 화면에 설명으로 표시,
+       *   scopes: { name, note?, bindings: { [id]: {kind, value, flags} } }[]  // flags: {tdz, hoisted}
+       * }
+       * 시각화는 step을 그대로 그려준다(실행을 ‘시뮬레이션’).
+       */
+
+      const scenarios = {
+        "var-vs-let-tdz": {
+          code: `// var vs let (TDZ/호이스팅 차이)
+/*
+console.log(a);   // undefined (var 호이스팅: 선언+초기화 undefined)
+console.log(b);   // ⛔ ReferenceError (TDZ 구간)
+var a = 1;
+let b = 2;
+console.log(a, b); // 1 2
+*/
+`,
+          steps: [
+            {
+              label:
+                "1) 선언 전 접근: var는 호이스팅되어 undefined, let은 TDZ에 걸린다.",
+              scopes: [
+                {
+                  name: "Global Scope",
+                  note: "파싱 단계에서 var a는 호이스팅되어 undefined로 초기화. let b는 생성되지만 초기화 전(TDZ).",
+                  bindings: {
+                    a: {
+                      kind: "var",
+                      value: "undefined",
+                      flags: { hoisted: true },
+                    },
+                    b: { kind: "let", value: "⛔ TDZ", flags: { tdz: true } },
+                  },
+                },
+              ],
+            },
+            {
+              label: "2) var a = 1 실행 후.",
+              scopes: [
+                {
+                  name: "Global Scope",
+                  bindings: {
+                    a: { kind: "var", value: 1 },
+                    b: { kind: "let", value: "⛔ TDZ", flags: { tdz: true } },
+                  },
+                },
+              ],
+            },
+            {
+              label: "3) let b = 2 실행 후.",
+              scopes: [
+                {
+                  name: "Global Scope",
+                  bindings: {
+                    a: { kind: "var", value: 1 },
+                    b: { kind: "let", value: 2 },
+                  },
+                },
+              ],
+            },
+            {
+              label: "4) console.log(a,b) → 1 2",
+              scopes: [
+                {
+                  name: "Global Scope",
+                  bindings: {
+                    a: { kind: "var", value: 1 },
+                    b: { kind: "let", value: 2 },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+
+        "function-vs-block": {
+          code: `// 함수 스코프 vs 블록 스코프
+/*
+function foo() {
+  if (true) {
+    var x = "var in block";   // 함수 스코프
+    let y = "let in block";   // 블록 스코프
+  }
+  console.log(x); // "var in block"
+  console.log(y); // ⛔ ReferenceError (블록 밖)
+}
+foo();
+*/
+`,
+          steps: [
+            {
+              label: "1) 함수 foo 호출 전, 전역엔 foo만 존재.",
+              scopes: [
+                {
+                  name: "Global Scope",
+                  bindings: {
+                    foo: { kind: "function", value: "f foo() {}", flags: {} },
+                  },
+                },
+              ],
+            },
+            {
+              label: "2) foo 실행: 함수 스코프 생성. if 블록 들어가기 전 상태.",
+              scopes: [
+                {
+                  name: "Global Scope",
+                  bindings: { foo: { kind: "function", value: "f foo() {}" } },
+                },
+                { name: "Function Scope(foo)", bindings: {} },
+              ],
+            },
+            {
+              label:
+                "3) if 블록 진입: var x는 함수 스코프에, let y는 블록 스코프에 바인딩.",
+              scopes: [
+                {
+                  name: "Global Scope",
+                  bindings: { foo: { kind: "function", value: "f foo() {}" } },
+                },
+                {
+                  name: "Function Scope(foo)",
+                  bindings: { x: { kind: "var", value: "var in block" } },
+                },
+                {
+                  name: "Block Scope(if)",
+                  bindings: { y: { kind: "let", value: "let in block" } },
+                },
+              ],
+            },
+            {
+              label:
+                "4) if 블록 종료: y는 사라짐(블록 스코프). x는 함수 스코프에 남아있음.",
+              scopes: [
+                {
+                  name: "Global Scope",
+                  bindings: { foo: { kind: "function", value: "f foo() {}" } },
+                },
+                {
+                  name: "Function Scope(foo)",
+                  bindings: { x: { kind: "var", value: "var in block" } },
+                },
+              ],
+            },
+            {
+              label: "5) console.log(x) 가능 / console.log(y)는 참조 불가.",
+              scopes: [
+                {
+                  name: "Global Scope",
+                  bindings: { foo: { kind: "function", value: "f foo() {}" } },
+                },
+                {
+                  name: "Function Scope(foo)",
+                  bindings: { x: { kind: "var", value: "var in block" } },
+                },
+              ],
+            },
+          ],
+        },
+
+        "closure-capture": {
+          code: `// 클로저 캡처: 내부 함수가 상위 렉시컬 환경을 기억
+/*
+function makeCounter() {
+  let count = 0;
+  return function() {
+    count++;
+    return count;
+  }
+}
+const inc = makeCounter();
+inc(); // 1
+inc(); // 2
+*/
+`,
+          steps: [
+            {
+              label: "1) makeCounter 선언만 전역에 존재.",
+              scopes: [
+                {
+                  name: "Global Scope",
+                  bindings: {
+                    makeCounter: {
+                      kind: "function",
+                      value: "f makeCounter() {}",
+                    },
+                  },
+                },
+              ],
+            },
+            {
+              label:
+                "2) makeCounter 호출: Function Scope 생성, count가 0으로 초기화.",
+              scopes: [
+                {
+                  name: "Global Scope",
+                  bindings: {
+                    makeCounter: {
+                      kind: "function",
+                      value: "f makeCounter() {}",
+                    },
+                  },
+                },
+                {
+                  name: "Function Scope(makeCounter)",
+                  bindings: { count: { kind: "let", value: 0 } },
+                },
+              ],
+            },
+            {
+              label:
+                "3) 내부 함수 생성 & 반환: 내부 함수는 count를 참조(렉시컬 환경 캡처).",
+              scopes: [
+                {
+                  name: "Global Scope",
+                  bindings: {
+                    makeCounter: {
+                      kind: "function",
+                      value: "f makeCounter() {}",
+                    },
+                    inc: {
+                      kind: "const",
+                      value: "ƒ () { count++; return count; }",
+                    },
+                  },
+                },
+                {
+                  name: "Closed-Over Env",
+                  note: "inc가 기억하는 렉시컬 환경",
+                  bindings: { count: { kind: "let", value: 0 } },
+                },
+              ],
+            },
+            {
+              label: "4) inc() 호출: count++ → 1",
+              scopes: [
+                {
+                  name: "Global Scope",
+                  bindings: {
+                    makeCounter: {
+                      kind: "function",
+                      value: "f makeCounter() {}",
+                    },
+                    inc: { kind: "const", value: "ƒ () { … }" },
+                  },
+                },
+                {
+                  name: "Closed-Over Env",
+                  bindings: { count: { kind: "let", value: 1 } },
+                },
+              ],
+            },
+            {
+              label: "5) inc() 다시 호출: count++ → 2 (환경이 유지됨)",
+              scopes: [
+                {
+                  name: "Global Scope",
+                  bindings: {
+                    makeCounter: {
+                      kind: "function",
+                      value: "f makeCounter() {}",
+                    },
+                    inc: { kind: "const", value: "ƒ () { … }" },
+                  },
+                },
+                {
+                  name: "Closed-Over Env",
+                  bindings: { count: { kind: "let", value: 2 } },
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      let current = null;
+      let idx = 0;
+
+      function loadScenario(key) {
+        current = scenarios[key];
+        idx = 0;
+        document.getElementById("code").textContent = current.code.trim();
+        render();
+      }
+
+      function nextStep() {
+        if (!current) return;
+        idx = Math.min(idx + 1, current.steps.length - 1);
+        render();
+      }
+
+      function prevStep() {
+        if (!current) return;
+        idx = Math.max(idx - 1, 0);
+        render();
+      }
+
+      function render() {
+        if (!current) {
+          document.getElementById("stage").textContent =
+            "시나리오를 선택하세요.";
+          document.getElementById("scopes").innerHTML = "";
+          document.getElementById("progress").textContent = "";
+          return;
+        }
+        const step = current.steps[idx];
+        document.getElementById("stage").textContent = step.label;
+
+        const scopesEl = document.getElementById("scopes");
+        scopesEl.innerHTML = "";
+        step.scopes.forEach((scope) => {
+          const el = document.createElement("div");
+          el.className = "scope";
+          el.innerHTML =
+            `<h3>${scope.name}</h3>` +
+            (scope.note ? `<div class="note">${scope.note}</div>` : "");
+          const bindings = scope.bindings || {};
+          Object.keys(bindings).forEach((k) => {
+            const b = bindings[k];
+            const row = document.createElement("div");
+            row.className = "kv";
+            const kindClass =
+              b.kind === "var"
+                ? "var"
+                : b.kind === "let"
+                ? "let"
+                : b.kind === "const"
+                ? "const"
+                : "func";
+            const flags = [
+              b.flags?.tdz ? `<span class="tdz">⛔ TDZ</span>` : "",
+              b.flags?.hoisted ? `<span class="hoisted">↑ hoisted</span>` : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
+            row.innerHTML = `<div class="k">${k} <span class="pill ${kindClass}">${
+              b.kind
+            }</span></div>
+                       <div class="v">${String(b.value)} ${flags}</div>`;
+            el.appendChild(row);
+          });
+          scopesEl.appendChild(el);
+        });
+
+        document.getElementById("progress").textContent = `Step ${idx + 1} / ${
+          current.steps.length
+        }`;
+      }
+    </script>
+  </body>
+</html>
