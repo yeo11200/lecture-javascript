@@ -10,3 +10,5 @@ function third() {
   console.log("third");
 }
 first();
+
+// first -> second -> third -> console.log("third"); -> console.log("second"); -> console.log("first");

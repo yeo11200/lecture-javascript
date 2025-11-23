@@ -1,5 +1,6 @@
 // 전역 변수
 let a = 10;
+let b = 30;
 
 // 전역 함수
 function outer() {
