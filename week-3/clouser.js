@@ -23,3 +23,14 @@ counter();
 counter2();
 counter();
 counter2();
+
+function outer2() {
+  var count = 0;
+  console.log(++count);
+}
+
+const counter3 = outer2;
+counter3();
+counter3();
+counter3();
+counter3();

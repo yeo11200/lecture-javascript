@@ -6,9 +6,9 @@ for (var i = 0; i < 5; i++) {
 }
 
 for (var z = 0; z < 5; z++) {
-  ((z) => {
+  ((j) => {
     setTimeout(() => {
-      console.log(z);
+      console.log(j);
     }, 4);
   })(z);
   // IIFE 호출 시점에 i의 값이 current로 복사된다.
